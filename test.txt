@@ -1,97 +1,43 @@
--- BY Alya ROB 🌸 - نظام محاكاة Silent AIM مع واجهة GUI
+-- BY Alya ROB 🌸 - نظام Silent AIM الخارق للتطوير
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
--- 1. إنشاء واجهة GUI
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "SilentAimSimulator"
-ScreenGui.Parent = game.CoreGui
-
-local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 300, 0, 400)
-MainFrame.Position = UDim2.new(0.5, -150, 0.5, -200)
-MainFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-MainFrame.Active = true
-MainFrame.Draggable = true
-MainFrame.Parent = ScreenGui
-
-local Title = Instance.new("TextLabel")
-Title.Text = "🌸 Alya Silent AIM Simulator"
-Title.Size = UDim2.new(1, 0, 0, 30)
-Title.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-Title.TextColor3 = Color3.new(1, 1, 1)
-Title.Parent = MainFrame
-
--- 2. إعدادات النظام
-local Settings = {
-    Enabled = false,
-    FOV = 60,
-    TeamCheck = true,
-    VisibilityCheck = true,
-    TargetPart = "Head",
-    Prediction = true,
-    Smoothing = 0.5
+-- 1. نظام الإعدادات المتقدم
+local AdvancedConfig = {
+    Active = true,
+    FOV = 90, -- زاوية الرؤية بالدرجات
+    AutoLock = true,
+    TargetPart = "Head", -- الجزء المستهدف
+    Prediction = {
+        Enabled = true,
+        VelocityScale = 0.3,
+        PingCompensation = true
+    },
+    Humanizer = {
+        Randomness = 0.02, -- عشوائية طبيعية
+        Smoothing = 0.7 -- سلاسة الحركة
+    }
 }
 
--- 3. عناصر التحكم في GUI
-local function CreateToggle(name, yPos, configKey)
-    local ToggleFrame = Instance.new("Frame")
-    ToggleFrame.Size = UDim2.new(1, -20, 0, 30)
-    ToggleFrame.Position = UDim2.new(0, 10, 0, yPos)
-    ToggleFrame.BackgroundTransparency = 1
-    ToggleFrame.Parent = MainFrame
+-- 2. نظام التتبع المتقدم
+local TargetSystem = {
+    CurrentTarget = nil,
+    TargetLock = false,
+    LastPosition = nil,
+    Velocity = Vector3.new(0, 0, 0)
+}
 
-    local ToggleButton = Instance.new("TextButton")
-    ToggleButton.Size = UDim2.new(0, 20, 0, 20)
-    ToggleButton.Position = UDim2.new(1, -20, 0, 5)
-    ToggleButton.Text = ""
-    ToggleButton.BackgroundColor3 = Settings[configKey] and Color3.new(0, 1, 0) or Color3.new(1, 0, 0)
-    ToggleButton.Parent = ToggleFrame
-
-    local ToggleLabel = Instance.new("TextLabel")
-    ToggleLabel.Text = name
-    ToggleLabel.Size = UDim2.new(1, -30, 1, 0)
-    ToggleLabel.TextColor3 = Color3.new(1, 1, 1)
-    ToggleLabel.BackgroundTransparency = 1
-    ToggleLabel.TextXAlignment = Enum.TextXAlignment.Left
-    ToggleLabel.Parent = ToggleFrame
-
-    ToggleButton.MouseButton1Click:Connect(function()
-        Settings[configKey] = not Settings[configKey]
-        ToggleButton.BackgroundColor3 = Settings[configKey] and Color3.new(0, 1, 0) or Color3.new(1, 0, 0)
-    end)
-
-    return ToggleButton
-end
-
--- إنشاء عناصر التحكم
-CreateToggle("تفعيل النظام", 40, "Enabled")
-CreateToggle("التحقق من الفريق", 80, "TeamCheck")
-CreateToggle("التحقق من الرؤية", 120, "VisibilityCheck")
-CreateToggle("تنبؤ الحركة", 160, "Prediction")
-
--- 4. نظام Silent AIM الأساسي
-local CurrentTarget = nil
-local FOVCircle = Drawing.new("Circle")
-FOVCircle.Visible = false
-FOVCircle.Color = Color3.new(1, 0, 0)
-FOVCircle.Thickness = 1
-FOVCircle.NumSides = 64
-FOVCircle.Filled = false
-
-local function FindTarget()
-    if not Settings.Enabled then return nil end
-    
-    local closestTarget = nil
-    local closestAngle = math.rad(Settings.FOV)
+-- 3. خوارزمية البحث عن الأهداف (محدثة)
+local function FindOptimalTarget()
+    local bestTarget = nil
+    local smallestAngle = math.rad(AdvancedConfig.FOV)
     local cameraPos = Camera.CFrame.Position
     
     for _, player in ipairs(Players:GetPlayers()) do
         if player == LocalPlayer then continue end
-        if Settings.TeamCheck and player.Team == LocalPlayer.Team then continue end
         
         local character = player.Character
         if not character then continue end
@@ -99,85 +45,130 @@ local function FindTarget()
         local humanoid = character:FindFirstChildOfClass("Humanoid")
         if not humanoid or humanoid.Health <= 0 then continue end
         
-        local targetPart = character:FindFirstChild(Settings.TargetPart)
+        local targetPart = character:FindFirstChild(AdvancedConfig.TargetPart)
         if not targetPart then continue end
         
-        -- حساب الزاوية
+        -- حساب الزاوية بدقة عالية
         local direction = (targetPart.Position - cameraPos).Unit
         local angle = math.acos(Camera.CFrame.LookVector:Dot(direction))
         
-        -- التحقق من الرؤية
-        if Settings.VisibilityCheck then
-            local raycastParams = RaycastParams.new()
-            raycastParams.FilterDescendantsInstances = {LocalPlayer.Character, character}
-            raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-            local raycastResult = workspace:Raycast(cameraPos, direction * 1000, raycastParams)
-            
-            if raycastResult and not raycastResult.Instance:IsDescendantOf(character) then
-                continue
+        if angle < smallestAngle then
+            -- حساب السرعة للتنبؤ
+            local velocity = Vector3.new(0, 0, 0)
+            if TargetSystem.LastPosition then
+                velocity = (targetPart.Position - TargetSystem.LastPosition) / RunService.Heartbeat:Wait()
             end
-        end
-        
-        if angle < closestAngle then
-            closestAngle = angle
-            closestTarget = {
+            
+            smallestAngle = angle
+            bestTarget = {
                 Player = player,
                 Part = targetPart,
-                Position = targetPart.Position
+                Position = targetPart.Position,
+                Velocity = velocity
             }
         end
     end
     
-    return closestTarget
+    return bestTarget
 end
 
--- 5. تحديث النظام
-RunService.RenderStepped:Connect(function()
-    -- تحديث الدائرة
-    FOVCircle.Radius = Settings.FOV * 3
-    FOVCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
-    FOVCircle.Visible = Settings.Enabled
-    
-    -- البحث عن الهدف
-    CurrentTarget = FindTarget()
-end)
-
--- 6. وظيفة التصويب المعدلة
-function GetModifiedDirection(origin, direction)
-    if not Settings.Enabled or not CurrentTarget then
-        return direction
+-- 4. خوارزمية التنبؤ المحسنة
+local function CalculatePrecisePrediction(target)
+    if not AdvancedConfig.Prediction.Enabled then
+        return target.Position
     end
     
-    local targetPos = CurrentTarget.Part.Position
+    local predictedPosition = target.Position
     
-    -- تطبيق التنبؤ
-    if Settings.Prediction and CurrentTarget.Part:IsA("BasePart") then
-        local velocity = CurrentTarget.Part.Velocity
-        local distance = (targetPos - origin).Magnitude
-        targetPos = targetPos + (velocity * (distance / 2000))
+    -- حساب تأثير السرعة
+    predictedPosition = predictedPosition + (target.Velocity * AdvancedConfig.Prediction.VelocityScale)
+    
+    -- تعويض Ping إذا كان مفعلاً
+    if AdvancedConfig.Prediction.PingCompensation then
+        local ping = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue()
+        predictedPosition = predictedPosition + (target.Velocity * (ping/2000))
     end
     
-    -- تطبيق التمهيد
-    local newDirection = (targetPos - origin).Unit
-    return direction:Lerp(newDirection, Settings.Smoothing)
+    return predictedPosition
 end
 
--- 7. اختبار النظام (للتطوير فقط)
-local TestLabel = Instance.new("TextLabel")
-TestLabel.Text = "وضع الاختبار: جاهز"
-TestLabel.Size = UDim2.new(1, -20, 0, 30)
-TestLabel.Position = UDim2.new(0, 10, 0, 360)
-TestLabel.TextColor3 = Color3.new(1, 1, 1)
-TestLabel.BackgroundTransparency = 1
-TestLabel.Parent = MainFrame
+-- 5. نظام التصويب الخارق (محدث)
+function GetPerfectAimDirection(origin)
+    if not AdvancedConfig.Active then
+        return Camera.CFrame.LookVector
+    end
+    
+    -- البحث عن الهدف الأمثل
+    TargetSystem.CurrentTarget = FindOptimalTarget()
+    
+    if not TargetSystem.CurrentTarget then
+        return Camera.CFrame.LookVector
+    end
+    
+    -- حساب الموضع الدقيق مع التنبؤ
+    local precisePosition = CalculatePrecisePrediction(TargetSystem.CurrentTarget)
+    
+    -- تطبيق العشوائية البشرية
+    if AdvancedConfig.Humanizer.Randomness > 0 then
+        local offset = Vector3.new(
+            (math.random() * 2 - 1) * AdvancedConfig.Humanizer.Randomness,
+            (math.random() * 2 - 1) * AdvancedConfig.Humanizer.Randomness,
+            (math.random() * 2 - 1) * AdvancedConfig.Humanizer.Randomness
+        )
+        precisePosition = precisePosition + offset
+    end
+    
+    -- حساب الاتجاه الدقيق
+    local perfectDirection = (precisePosition - origin).Unit
+    
+    -- تطبيق السلاسة
+    if AdvancedConfig.Humanizer.Smoothing > 0 then
+        perfectDirection = Camera.CFrame.LookVector:Lerp(perfectDirection, AdvancedConfig.Humanizer.Smoothing)
+    end
+    
+    return perfectDirection
+end
 
--- 8. تفعيل/إلغاء النظام
+-- 6. نظام المحاكاة (للتطوير فقط)
+local function SimulateBullet(origin)
+    local direction = GetPerfectAimDirection(origin)
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterDescendantsInstances = {LocalPlayer.Character}
+    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+    
+    local raycastResult = workspace:Raycast(origin, direction * 1000, raycastParams)
+    if raycastResult then
+        -- كود تأثير الرصاصة هنا
+        print("🎯 أصبت الهدف بدقة عالية!")
+    end
+end
+
+-- 7. اختبار النظام (للتطوير)
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if input.KeyCode == Enum.KeyCode.RightControl then
-        Settings.Enabled = not Settings.Enabled
-        TestLabel.Text = "الحالة: " .. (Settings.Enabled and "مفعل" or "معطل")
+    if input.KeyCode == Enum.KeyCode.E then
+        local character = LocalPlayer.Character
+        if character then
+            local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+            if humanoidRootPart then
+                SimulateBullet(humanoidRootPart.Position)
+            end
+        end
     end
 end)
 
-print("✅ تم تحميل نظام محاكاة Silent AIM بنجاح")
-print("🔄 استخدم RightControl لتفعيل/إلغاء النظام")
+-- 8. نظام الرؤية (FOV Circle)
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Visible = true
+FOVCircle.Color = Color3.new(1, 0, 0)
+FOVCircle.Thickness = 1
+FOVCircle.NumSides = 64
+FOVCircle.Filled = false
+
+RunService.RenderStepped:Connect(function()
+    FOVCircle.Radius = AdvancedConfig.FOV * 3
+    FOVCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+    FOVCircle.Visible = AdvancedConfig.Active
+end)
+
+print("🔥 تم تحميل نظام AIM الخارق بنجاح!")
+print("🎯 اضغط E لمحاكاة إطلاق النار")
